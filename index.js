@@ -214,5 +214,5 @@ async function enviarLinksPorDM(interaction, categoria, subcat) {
 }
 
 // 🔹 LOGIN
-client.login("MTQyMDA2MzM5NDg1NzM1NzM3NA.GKUABR.NXuwIXoH0Vd5ew8513f6LX_mbs5McAqjGBM3Bw");
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 
