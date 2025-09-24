@@ -12,5 +12,13 @@
   "dependencies": {
     "discord.js": "^14.22.1",
     "dotenv": "^17.2.2"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SRCCONNERGROUP/R2D2-Bot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SRCCONNERGROUP/R2D2-Bot/issues"
+  },
+  "homepage": "https://github.com/SRCCONNERGROUP/R2D2-Bot#readme"
 }

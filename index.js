@@ -4,8 +4,9 @@ const {
     ActionRowBuilder, 
     ButtonBuilder, 
     ButtonStyle, 
-    StringSelectMenuBuilder, 
-    StringSelectMenuOptionBuilder 
+    StringSelectMenuBuilder,
+    EmbedBuilder,
+    AttachmentBuilder
 } = require('discord.js');
 
 require('dotenv').config();
@@ -23,7 +24,9 @@ const CHANNELS = {
     pagos: "1419772886188687411",
     obamacareBroker: "1419767454560944188",
     medicareBroker: "1419767387359809556",
-    miembros: "1419774101605581031"
+    miembros: "1419774101605581031",
+    tutoriales: "1419784342338670592",
+    documentos: "1419762991100072098"
 };
 
 // 🔹 NOMBRES Y EMOJIS
@@ -31,7 +34,9 @@ const NAMES = {
     pagos: "💳 Pagos",
     obamacareBroker: "🏥 Obamacare Broker",
     medicareBroker: "🏥 Medicare Broker",
-    miembros: "👤 Cuentas Miembros"
+    miembros: "👤 Cuentas Miembros",
+    tutoriales: "🎬 Tutoriales",
+    documentos: "📄 Documentos"
 };
 
 // 🔹 EMOJIS PARA SUBCATEGORÍAS
@@ -40,6 +45,8 @@ const SUBCATEGORY_EMOJIS = {
     "Medicare": "🏥",
     "Pago": "💳",
     "Cuenta": "👤",
+    "Tutorial": "🎬",
+    "Documento": "📄",
     "Otros": "📄"
 };
 
@@ -48,7 +55,9 @@ let LINKS = {
     pagos: {},
     obamacareBroker: {},
     medicareBroker: {},
-    miembros: {}
+    miembros: {},
+    tutoriales: {},
+    documentos: {}
 };
 
 // 🔹 BOTONES PRINCIPALES
@@ -58,8 +67,7 @@ const CATEGORIAS = Object.keys(NAMES).map(k => ({
     style: k.includes("Broker") ? ButtonStyle.Success : ButtonStyle.Primary
 }));
 
-// 🔹 FUNCION TRUNCADO DE LABELS
-function truncateLabel(text, max = 50) {
+function truncateLabel(text, max = 40) {
     if (text.length <= max) return text;
     return text.slice(0, max - 3) + "...";
 }
@@ -78,13 +86,29 @@ async function actualizarLinks() {
                 const sub = match ? match[1] : "Otros";
 
                 if (!LINKS[categoria][sub]) LINKS[categoria][sub] = [];
-                LINKS[categoria][sub].push({ 
-                    label: truncateLabel(`${SUBCATEGORY_EMOJIS[sub] || "📄"} ${m.content}`), 
-                    url: m.content 
+
+                // Texto
+                if (m.content) {
+                    LINKS[categoria][sub].push({ 
+                        label: truncateLabel(`${SUBCATEGORY_EMOJIS[sub] || "📄"} ${m.content}`), 
+                        url: m.content,
+                        type: "text"
+                    });
+                }
+
+                // Archivos adjuntos
+                m.attachments.forEach(att => {
+                    LINKS[categoria][sub].push({
+                        label: truncateLabel(`${SUBCATEGORY_EMOJIS[sub] || "📄"} ${att.name}`),
+                        url: att.url,
+                        type: att.contentType?.startsWith("video") ? "video" : "file",
+                        name: att.name,
+                        thumbnail: att.contentType?.startsWith("image") ? att.url : null
+                    });
                 });
             });
         }
-        console.log("🔄 Links actualizados automáticamente con subcategorías y emojis.");
+        console.log("🔄 Links y archivos actualizados automáticamente con mini-previews.");
     } catch (error) {
         console.error("❌ Error al actualizar links:", error);
     }
@@ -94,10 +118,10 @@ async function actualizarLinks() {
 client.once('ready', async () => {
     console.log(`✅ R2D2 en línea como ${client.user.tag}`);
     await actualizarLinks();
-    setInterval(actualizarLinks, 300000); // cada 5 minutos
+    setInterval(actualizarLinks, 300000);
 });
 
-// 🔹 MENSAJE DE BIENVENIDA Y MENÚ PRINCIPAL
+// 🔹 MENSAJE DE BIENVENIDA
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
     if (!message.content.toLowerCase().includes("menu")) return;
@@ -109,13 +133,7 @@ client.on('messageCreate', async (message) => {
     );
 
     await message.reply({
-        content: 
-`👋 ¡Hola! Bienvenido al panel R2D2:
-────────────────────────────
-1️⃣ Selecciona una categoría
-2️⃣ Selecciona un subcategoría (si aplica)
-3️⃣ Selecciona el link → se enviará por DM
-────────────────────────────`,
+        content: "👋 ¡Hola! Bienvenido al panel R2D2:\n────────────────────────────\nSelecciona una categoría para ver los links y archivos.\n────────────────────────────",
         components: [new ActionRowBuilder().addComponents(botones)]
     });
 });
@@ -130,38 +148,10 @@ client.on('interactionCreate', async interaction => {
             const categoria = interaction.customId.replace("categoria_", "");
             const subcats = Object.keys(LINKS[categoria]);
 
-            // Si solo hay subcategoría "Otros", ir directo a links
             if (subcats.length === 1 && subcats[0] === "Otros") {
-                const links = LINKS[categoria]["Otros"];
-
-                if (!links || links.length === 0) {
-                    return interaction.reply({ content: "⚠️ No hay links disponibles.", ephemeral: true });
-                }
-
-                const opciones = links.map((l, index) => ({
-                    label: truncateLabel(l.label, 50),
-                    value: `${categoria}|link_${index}`
-                }));
-
-                interaction.client._tempLinks = interaction.client._tempLinks || {};
-                interaction.client._tempLinks[categoria] = {};
-                links.forEach((l, index) => {
-                    interaction.client._tempLinks[categoria][`link_${index}`] = l.url;
-                });
-
-                const menu = new StringSelectMenuBuilder()
-                    .setCustomId("link_select")
-                    .setPlaceholder("➡️ Selecciona un link")
-                    .addOptions(opciones);
-
-                return interaction.reply({
-                    content: `🔗 **Links disponibles de ${NAMES[categoria]}:**`,
-                    components: [new ActionRowBuilder().addComponents(menu)],
-                    ephemeral: true
-                });
+                return enviarLinksPorDM(interaction, categoria, "Otros");
             }
 
-            // Si hay varias subcategorías → mostrar menú de subcategorías
             const opciones = subcats.map((s, i) => ({
                 label: `${SUBCATEGORY_EMOJIS[s] || "📄"} | ${s}`,
                 value: `${categoria}|subcat_${i}`
@@ -179,7 +169,7 @@ client.on('interactionCreate', async interaction => {
                 .addOptions(opciones);
 
             await interaction.reply({ 
-                content: `📂 **Subcategorías disponibles de ${NAMES[categoria]}:**`,
+                content: `📂 Subcategorías de ${NAMES[categoria]}:`,
                 components: [new ActionRowBuilder().addComponents(menu)],
                 ephemeral: true
             });
@@ -189,57 +179,40 @@ client.on('interactionCreate', async interaction => {
         if (interaction.isStringSelectMenu() && interaction.customId === "subcategoria_select") {
             const [categoria, subcatKey] = interaction.values[0].split("|");
             const subcat = interaction.client._tempSubcats?.[categoria]?.[subcatKey];
-            const links = LINKS[categoria][subcat];
-
-            if (!links || links.length === 0) {
-                return interaction.update({
-                    content: `⚠️ No hay links disponibles en **${subcat}**.`,
-                    components: []
-                });
-            }
-
-            const opciones = links.map((l, index) => ({
-                label: truncateLabel(l.label, 50),
-                value: `${categoria}|link_${index}`
-            }));
-
-            // Guardar la url real en un diccionario temporal
-            interaction.client._tempLinks = interaction.client._tempLinks || {};
-            interaction.client._tempLinks[categoria] = {};
-            links.forEach((l, index) => {
-                interaction.client._tempLinks[categoria][`link_${index}`] = l.url;
-            });
-
-            const menu = new StringSelectMenuBuilder()
-                .setCustomId("link_select")
-                .setPlaceholder("➡️ Selecciona un link")
-                .addOptions(opciones);
-
-            await interaction.update({
-                content: `🔗 **Links disponibles en ${subcat}:**`,
-                components: [new ActionRowBuilder().addComponents(menu)]
-            });
-        }
-
-        // 🔹 Link final → enviado por DM
-        if (interaction.isStringSelectMenu() && interaction.customId === "link_select") {
-            const [categoria, tempKey] = interaction.values[0].split("|");
-            const url = interaction.client._tempLinks?.[categoria]?.[tempKey];
-
-            if (!url) return interaction.update({
-                content: "❌ Error al recuperar el link. Intenta otra vez.",
-                components: []
-            });
-
-            await interaction.user.send(`🔗 **R2D2 Link:** ${NAMES[categoria]}\n${url}`);
-            await interaction.update({ content: "✅ Te envié el link por privado.", components: [] });
+            return enviarLinksPorDM(interaction, categoria, subcat);
         }
     } catch (err) {
         console.error(err);
-        if (!interaction.replied) interaction.reply({ content: "❌ Ocurrió un error al procesar tu solicitud.", ephemeral: true });
+        if (!interaction.replied) interaction.reply({ content: "❌ Ocurrió un error.", ephemeral: true });
     }
 });
 
-require('dotenv').config();
-client.login(process.env.DISCORD_TOKEN);
+// 🔹 FUNCION PARA ENVIAR LINKS POR DM CON EMBEDS VISUALES
+async function enviarLinksPorDM(interaction, categoria, subcat) {
+    const links = LINKS[categoria][subcat];
+    if (!links || links.length === 0) return interaction.reply({ content: "⚠️ No hay links o archivos disponibles.", ephemeral: true });
+
+    for (const item of links) {
+        const embed = new EmbedBuilder()
+            .setTitle(item.name || item.label)
+            .setDescription(`Categoría: ${NAMES[categoria]}`)
+            .setURL(item.url)
+            .setColor(0x00AE86)
+            .setFooter({ text: "R2D2 Bot" });
+
+        if (item.thumbnail) embed.setThumbnail(item.thumbnail);
+
+        if (item.type === "file") {
+            const attachment = new AttachmentBuilder(item.url);
+            await interaction.user.send({ embeds: [embed], files: [attachment] });
+        } else {
+            await interaction.user.send({ embeds: [embed] });
+        }
+    }
+
+    await interaction.reply({ content: "✅ Te envié los links y archivos por DM.", components: [], ephemeral: true });
+}
+
+// 🔹 LOGIN
+client.login("MTQyMDA2MzM5NDg1NzM1NzM3NA.GKUABR.NXuwIXoH0Vd5ew8513f6LX_mbs5McAqjGBM3Bw");
 
